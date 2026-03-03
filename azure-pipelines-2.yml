@@ -1,0 +1,121 @@
+# Workload Identity URL: https://devblogs.microsoft.com/devops/introduction-to-azure-devops-workload-identity-federation-oidc-with-terraform/
+
+name: Terraform-Pipeline-$(Date:yyyyMMdd)-$(Rev:r)
+
+trigger:
+  - none # Disable automatic triggering on any branch
+
+# Uncomment the following lines to enable automatic triggering on changes to the main branch
+
+# trigger:
+#   branches:
+#     include:
+#     - main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  TERRAFORM_URL: "https://releases.hashicorp.com/terraform/1.12.2/terraform_1.12.2_linux_amd64.zip" # Specify desired Terraform version. Change only if needed.
+  #workingDirectory: '$(System.DefaultWorkingDirectory)/terraform' # Adjust to your Terraform config path
+  workingDirectory: "$(System.DefaultWorkingDirectory)" # Adjust to your Terraform config path
+  azureServiceConnection: "TF_PL_Test_SP_01" # Replace with your Azure service connection name
+  backendResourceGroup: "RG_Name_Here" # Replace with your backend resource group
+  backendStorageAccount: "Storage_Account_Name_Here" # Replace with your backend storage account
+  backendContainer: "Container_Name_Here" # Replace with your backend container
+  backendStateFile: "Key_Name_Here" # Name of the state file
+
+steps:
+  - task: Bash@3
+    displayName: "Install Terraform"
+    inputs:
+      targetType: "inline"
+      script: |
+        # wget -O terraform.zip https://releases.hashicorp.com/terraform/1.12.2/terraform_1.12.2_linux_amd64.zip //Used for direct download if needed.
+        wget -O terraform.zip "$TERRAFORM_URL"
+        unzip terraform.zip
+        sudo mv terraform /usr/local/bin/
+        terraform --version
+
+  # Only needed if using Azure CLI for authentication
+  # - task: AzureCLI@2
+  #   displayName: "Authenticate with Azure Service Principal"
+  #   inputs:
+  #     azureSubscription: "$(azureServiceConnection)"
+  #     scriptType: "bash"
+  #     scriptLocation: "inlineScript"
+  #     inlineScript: |
+  #       echo "Verifying Azure login..."
+  #       az account show
+  #       echo "Azure login successful."
+  #   condition: succeeded()
+
+  - task: Bash@3
+    displayName: "Terraform Format"
+    inputs:
+      targetType: "inline"
+      script: |
+        cd $(workingDirectory)
+        terraform fmt -check -recursive
+
+  - task: Bash@3
+    displayName: "Terraform Init"
+    inputs:
+      targetType: "inline"
+      script: |
+        cd $(workingDirectory)
+        terraform init \
+          -backend-config="resource_group_name=$(backendResourceGroup)" \
+          -backend-config="storage_account_name=$(backendStorageAccount)" \
+          -backend-config="container_name=$(backendContainer)" \
+          -backend-config="key=$(backendStateFile)"
+    condition: succeeded()
+    env:
+      ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+      ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+      ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+      ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+  - task: Bash@3
+    displayName: "Terraform Validate"
+    inputs:
+      targetType: "inline"
+      script: |
+        cd $(workingDirectory)
+        terraform validate
+    condition: succeeded()
+
+  - task: Bash@3
+    displayName: "Terraform Plan"
+    inputs:
+      targetType: "inline"
+      script: |
+        cd $(workingDirectory)
+        terraform plan -out=tfplan
+    condition: succeeded()
+    env:
+      ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+      ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+      ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+      ARM_TENANT_ID: $(ARM_TENANT_ID)
+# - task: Bash@3
+#   displayName: "Terraform Apply"
+#   inputs:
+#     targetType: "inline"
+#     script: |
+#       cd $(workingDirectory)
+#       terraform apply -auto-approve tfplan
+#   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+#   env:
+#     ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+#     ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+#     ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+#     ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+# - task: PublishPipelineArtifact@1
+#   displayName: "Publish Terraform Plan"
+#   inputs:
+#     targetPath: "$(workingDirectory)/tfplan"
+#     artifact: "terraform-plan"
+#     publishLocation: "pipeline"
+#   condition: succeededOrFailed()
