@@ -1,0 +1,22 @@
+settings.json
+*settings.json
+
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfplan
+*.tfstate.*
+*.tfvars.backup
+*.terraform.lock.hcl
+.terraform.lock.hcl
+modules.json
+
+# Crash log files
+crash.log
+
+# .exe files
+*.exe
+
+modules.json
